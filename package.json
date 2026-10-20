@@ -1,5 +1,11 @@
 {
+  "scripts": {
+    "start": "node servidorREST.js"
+  },
   "dependencies": {
-    "express": "^5.2.1"
+    "@supabase/supabase-js": "^2.x.x",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "jwt-simple": "^0.5.6"
   }
 }
