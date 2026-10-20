@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gestor – Gestión Hospitalaria</title>
+    <link rel="icon" href="data:," />
+
+    <style>
+      /* =========================================================
+         MISMA ESTÉTICA QUE LA APP DEL SANITARIO
+         (cabecera gris, fondo gris claro, azul #333399, botones
+         redondeados, mismos colores de estado) pero pensada
+         para ordenador: más ancha y con tablas.
+         ========================================================= */
+      :root {
+        --gris-cabecera: #bbb;
+        --fondo: #f4f4f4;
+        --azul: #333399;
+        --gris-texto: #6b6b6b;
+        --borde: #ccc;
+        --separador: #ececec;
+
+        /* Colores de estado (los mismos que en la app del sanitario) */
+        --c-pendiente: #3fa34d;
+        --c-en-uso: #3b7fc4;
+        --c-retraso: #d64541;
+        --c-finalizada: #a3a3a3;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+        font-size: 15px;
+        background: var(--fondo);
+        color: #222;
+      }
+
+      /* ---------- CABECERA ---------- */
+      .cabecera {
+        background: var(--gris-cabecera);
+        padding: 12px;
+        text-align: center;
+        font-size: 20px;
+        font-weight: bold;
+        border-bottom: 1px solid #999;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+      }
+
+      .contenido { max-width: 1100px; margin: 0 auto; padding: 20px; }
+
+      /* ---------- SECCIONES (las usa cambiarSeccion en main.js) ---------- */
+      .seccion { display: none; }
+      .activa { display: block; }
+
+      h2 { margin: 0 0 16px; font-size: 1.3em; }
+      h3 { margin: 0 0 12px; font-size: 1.05em; color: var(--azul); }
+
+      /* Bloque blanco con bordes redondeados */
+      .tarjeta {
+        background: #fff;
+        border: 1px solid var(--borde);
+        border-radius: 8px;
+        padding: 16px 20px;
+        margin-bottom: 20px;
+      }
+      .tarjeta.estrecha { max-width: 440px; margin: 40px auto; }
+
+      /* ---------- FORMULARIOS ---------- */
+      .campo { margin-bottom: 14px; }
+      .campo label {
+        display: block;
+        font-weight: bold;
+        color: var(--azul);
+        margin-bottom: 4px;
+      }
+
+      input, select, textarea, button { font-family: inherit; font-size: 15px; }
+
+      input, select {
+        width: 100%;
+        padding: 9px 10px;
+        border: 1px solid #aaa;
+        border-radius: 6px;
+        background: #fff;
+      }
+
+      button {
+        min-height: 38px;
+        padding: 7px 16px;
+        border: 1px solid #888;
+        border-radius: 6px;
+        background: #e8e8e8;
+        color: #222;
+        cursor: pointer;
+      }
+      button:hover { filter: brightness(0.95); }
+      button.principal { background: var(--azul); color: #fff; border-color: var(--azul); }
+      button.peligro { background: #fff; color: var(--c-retraso); border-color: var(--c-retraso); }
+
+      .botones { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+
+      /* Rejilla de campos en varias columnas (filtros, ficha del recurso) */
+      .rejilla {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 12px 16px;
+      }
+      .rejilla .campo { margin-bottom: 0; }
+
+      /* ---------- CABECERA DEL MENÚ PRINCIPAL ---------- */
+      .saludo {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 20px;
+      }
+      .saludo h2 { margin: 0; }
+      .saludo .botones { margin: 0; }
+
+      .pie-tarjeta {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+      .pie-tarjeta h3 { margin: 0; }
+
+      .etiqueta-codigo {
+        display: inline-block;
+        background: var(--azul);
+        color: #fff;
+        border-radius: 12px;
+        padding: 2px 10px;
+        font-size: 13px;
+        font-weight: bold;
+      }
+
+      /* ---------- TABLAS ---------- */
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        background: #fff;
+      }
+      th, td {
+        padding: 8px 10px;
+        text-align: left;
+        border-bottom: 1px solid var(--separador);
+      }
+      th {
+        background: #eee;
+        font-size: 13px;
+        color: #444;
+        border-bottom: 1px solid var(--borde);
+      }
+      tbody tr:hover { background: #f7f7fb; }
+      td button { min-height: 30px; padding: 3px 12px; font-size: 14px; }
+
+      /* ---------- COLORES DE LAS RESERVAS (los pone colorReserva en main.js) ----------
+         Igual que en el sanitario: una franja del color del estado a la izquierda */
+      .reserva-pendiente  td:first-child { border-left: 5px solid var(--c-pendiente); }
+      .reserva-en-uso     td:first-child { border-left: 5px solid var(--c-en-uso); }
+      .reserva-superada   td:first-child { border-left: 5px solid var(--c-retraso); }
+      .reserva-finalizada td:first-child { border-left: 5px solid var(--c-finalizada); }
+      .reserva-pendiente  { background: #eef8ef; }
+      .reserva-en-uso     { background: #edf4fb; }
+      .reserva-superada   { background: #fbeeee; }
+      .reserva-finalizada { background: #fff; color: #666; }
+
+      /* Leyenda de colores */
+      .leyenda {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 16px;
+        font-size: 12px;
+        color: var(--gris-texto);
+        margin-bottom: 8px;
+      }
+      .leyenda span::before {
+        content: "";
+        display: inline-block;
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        margin-right: 5px;
+        background: var(--color);
+      }
+
+      /* Ranking: los 3 primeros en negrita */
+      #tablaRanking tr:nth-child(-n+3) td { font-weight: bold; }
+      #tablaRanking tr:first-child td:first-child { color: var(--azul); }
+    </style>
+  </head>
+
+  <body>
+    <header class="cabecera">Aplicación Gestor</header>
+
+    <main class="contenido">
+
+      <!-- ---------------------- -->
+      <!-- LOGIN -->
+      <!-- ---------------------- -->
+      <div id="login" class="seccion activa">
+        <div class="tarjeta estrecha">
+          <h2>Acceso gestor</h2>
+          <div class="campo">
+            <label for="usuario">Usuario</label>
+            <input id="usuario" autocomplete="username" />
+          </div>
+          <div class="campo">
+            <label for="password">Contraseña</label>
+            <input type="password" id="password" autocomplete="current-password" />
+          </div>
+          <div class="botones">
+            <button class="principal" onclick="entrar()">Entrar</button>
+            <button onclick="cambiarSeccion('registro-gestor')">Registrarse</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ---------------------- -->
+      <!-- REGISTRO / MODIFICAR GESTOR -->
+      <!-- ---------------------- -->
+      <div id="registro-gestor" class="seccion">
+        <div class="tarjeta estrecha">
+          <h2>Registro / Modificación</h2>
+          <div class="campo">
+            <label for="nombre">Nombre</label>
+            <input id="nombre" />
+          </div>
+          <div class="campo">
+            <label for="apellidos">Apellidos</label>
+            <input id="apellidos" />
+          </div>
+          <div class="campo">
+            <label for="loginG">Usuario</label>
+            <input id="loginG" />
+          </div>
+          <div class="campo">
+            <label for="passwordG">Contraseña</label>
+            <input type="password" id="passwordG" />
+          </div>
+          <div class="botones">
+            <button class="principal" onclick="guardarGestor(true)">Guardar</button>
+            <button onclick="cambiarSeccion('login')">Cancelar</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ---------------------- -->
+      <!-- MENÚ PRINCIPAL -->
+      <!-- ---------------------- -->
+      <div id="menu-principal" class="seccion">
+
+        <div class="saludo">
+          <h2>Bienvenido <span id="nombreGestor"></span></h2>
+          <div class="botones">
+            <button onclick="editarGestor()">Editar datos</button>
+            <button onclick="salir()">Salir</button>
+          </div>
+        </div>
+
+        <!-- ===== PRÁCTICA 3 - PARTE 1: MINISTERIO DE SANIDAD ===== -->
+        <div class="tarjeta">
+          <div class="pie-tarjeta">
+            <h3>Ministerio de Sanidad &nbsp;<span class="etiqueta-codigo">Nuestro código: 1</span></h3>
+            <div class="botones" style="margin:0">
+              <button class="principal" onclick="subirReservasMinisterio()">Subir reservas al Ministerio</button>
+              <button  onclick="subirReservasFinalizadasMinisterio(true)">Subir reservas finalizadas</button>
+              <button onclick="cargarRanking()">Actualizar ranking</button>
+            </div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 90px">Puesto</th>
+                <th>Área médica</th>
+                <th style="width: 140px">Nº reservas</th>
+              </tr>
+            </thead>
+            <tbody id="tablaRanking"></tbody>
+          </table>
+     <!-- EJERCICIO 3: RANKING POR CATEGORÍA -->
+          <button onclick="cargarRankingCategoria()">Ranking por categoría</button>
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 90px">Puesto</th>
+                <th>Categoría</th>
+                <th style="width: 140px">Nº reservas</th>
+              </tr>
+            </thead>
+            <tbody id="tablaRankingCategoria"></tbody>
+          </table>
+        </div>
+        <!-- ===== FIN PRÁCTICA 3 - PARTE 1 ===== -->
+
+        <!-- BÚSQUEDA DE RECURSOS -->
+        <div class="tarjeta">
+          <h3>Búsqueda de recursos</h3>
+
+          <div class="rejilla">
+            <div class="campo">
+              <label for="filtroCategoria">Categoría</label>
+              <select id="filtroCategoria"><option>Todos</option></select>
+            </div>
+            <div class="campo">
+              <label for="filtroModelo">Modelo</label>
+              <select id="filtroModelo"><option>Todos</option></select>
+            </div>
+            <div class="campo">
+              <label for="filtroUbicacion">Ubicación</label>
+              <select id="filtroUbicacion"><option>Todos</option></select>
+            </div>
+            <div class="campo">
+              <label for="filtroEstado">Estado</label>
+              <select id="filtroEstado">
+                <option>Todos</option>
+                <option value="0">Operativo</option>
+                <option value="1">En mantenimiento</option>
+                <option value="2">Desactivado</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="botones" style="margin: 14px 0 16px">
+            <button class="principal" onclick="buscarRecursos()">Buscar</button>
+            <button onclick="nuevoRecurso()">+ Añadir recurso</button>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Nº Serie</th>
+                <th>Categoría</th>
+                <th>Modelo</th>
+                <th>Ubicación</th>
+                <th>Estado</th>
+                <th style="width: 80px">Abrir</th>
+                <th style="width: 80px">Borrar</th>
+              </tr>
+            </thead>
+            <tbody id="tablaRecursos"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ---------------------- -->
+      <!-- DETALLE DE UN RECURSO -->
+      <!-- ---------------------- -->
+      <div id="recurso-detalle" class="seccion">
+        <div class="botones" style="margin: 0 0 12px">
+          <button onclick="cambiarSeccion('menu-principal')">‹ Volver</button>
+        </div>
+
+        <div class="tarjeta">
+          <h3>Datos del recurso</h3>
+          <div class="rejilla">
+            <div class="campo">
+              <label for="recursoCategoria">Categoría</label>
+              <select id="recursoCategoria"></select>
+            </div>
+            <div class="campo">
+              <label for="recursoModelo">Modelo</label>
+              <select id="recursoModelo"></select>
+            </div>
+            <div class="campo">
+              <label for="recursoSerie">Nº de serie</label>
+              <input id="recursoSerie" />
+            </div>
+            <div class="campo">
+              <label for="recursoUbicacion">Ubicación</label>
+              <select id="recursoUbicacion"></select>
+            </div>
+            <div class="campo">
+              <label for="recursoEstado">Estado</label>
+              <select id="recursoEstado">
+                <option value="0">Operativo</option>
+                <option value="1">En mantenimiento</option>
+                <option value="2">Desactivado</option>
+              </select>
+            </div>
+          </div>
+          <div class="botones" style="margin-top: 16px">
+            <button class="principal" onclick="guardarRecurso()">Guardar</button>
+            <button onclick="cambiarSeccion('menu-principal')">Volver</button>
+          </div>
+        </div>
+
+        <div class="tarjeta">
+          <h3>Reservas</h3>
+          <div class="leyenda">
+            <span style="--color: var(--c-pendiente)">Pendiente</span>
+            <span style="--color: var(--c-en-uso)">En uso</span>
+            <span style="--color: var(--c-retraso)">Tiempo superado</span>
+            <span style="--color: var(--c-finalizada)">Finalizada</span>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Sanitario</th>
+                <th>H. estimadas</th>
+                <th>F. Petición</th>
+                <th>F. Inicio</th>
+                <th>F. Fin</th>
+              </tr>
+            </thead>
+            <tbody id="tablaReservas"></tbody>
+          </table>
+        </div>
+
+        <div class="tarjeta">
+          <h3>Reseñas</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Sanitario</th>
+                <th>Valoración</th>
+                <th>Comentario</th>
+              </tr>
+            </thead>
+            <tbody id="tablaResenyas"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </main>
+
+    <!-- JS -->
+    <script src="main.js"></script>
+  </body>
+</html>
