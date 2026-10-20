@@ -145,7 +145,6 @@ async function cargarFiltros(){
 }
 
 
-
 /* ===============================
    BUSCAR RECURSOS (BOTÓN BUSCAR)
 ================================ */
@@ -348,8 +347,7 @@ async function cargarOpcionesFicha(){
 // URL del servicio del Ministerio 
 var URL_MINISTERIO = "https://undefined.ua.es/telemedicina/api/datos";
 
-// con el códigodistinguimos nuestros envíos
-
+// nuestro código de área (con él distinguimos nuestros envíos)
 var MI_ID_AREA = 1;
 
 
@@ -369,10 +367,26 @@ function fechaHoy(){
 }
 
 /* ---------- BOTÓN: SUBIR RESERVAS (POST) ---------- */
-async function subirReservasMinisterio(soloFinalizadas){
+async function subirReservasMinisterio(){
     var idArea = MI_ID_AREA;
 
     try {
+        // 0) ¿YA HEMOS SUBIDO ANTES? Lo pregunto al Ministerio con un GET
+        var respMin = await fetch(URL_MINISTERIO);          // GET, sin token
+        var enviosMin = await respMin.json();               // lista de TODOS los envíos
+
+        var yaSubido = false;
+        for (var i = 0; i < enviosMin.length; i++){
+            if (Number(enviosMin[i].id_area) == MI_ID_AREA){
+                yaSubido = true;                            // hay un envío con nuestro código
+            }
+        }
+
+        if (yaSubido == true){
+            alert("Ya habéis subido vuestras reservas al Ministerio. No se pueden subir otra vez.");
+            return;                                         // salgo y NO hago el POST
+        }
+
         // 1) Pedimos a NUESTRO servidor todo lo necesario (con token)
         var reservas   = await fetchToken('/api/reservas').then(r => r.json());
         var sanitarios = await fetchToken('/api/sanitarios').then(r => r.json());
@@ -381,14 +395,9 @@ async function subirReservasMinisterio(soloFinalizadas){
         var categorias = await fetchToken('/api/categorias').then(r => r.json());
 
         // 2) Montamos un objeto por cada reserva con el formato del Ministerio
-        var datos = [];// datos es el objeto con todo
+        var datos = [];   // aquí meto TODAS las reservas (un solo array)
         for (var i = 0; i < reservas.length; i++){
             var r = reservas[i];
-
-            // EJ1 : si solo queremos las finalizadas, SALTAMOS las que no tienen fecha de fin
-            if(soloFinalizadas == true && r.fecha_fin == null ){
-                continue;
-            }
 
             // sanitario de la reserva
             var san = null;
@@ -424,7 +433,7 @@ async function subirReservasMinisterio(soloFinalizadas){
             });
         }
 
-        // 3) POST al Ministerio (SIN nuestro token: es otro servidor)
+        // 3) POST al Ministerio 
         var cuerpo = { "id_area": idArea, "fecha": fechaHoy(), "datos": datos };
 
         var resp = await fetch(URL_MINISTERIO, {
@@ -447,11 +456,32 @@ async function subirReservasMinisterio(soloFinalizadas){
 }
 
 
-
-
-
-
 /* ---------- COMPROBACIONES (no fiarse de lo que suben otros grupos) ---------- */
+
+// ¿Es un TEXTO de verdad?  (no vacío y que NO sea un número, ej: "3")
+function esTextoValido(t){
+    if (typeof t != "string") return false;   // si es un número 3, null, true... -> mal
+    if (t.trim() == "") return false;         // vacío o solo espacios -> mal
+    if (!isNaN(t)) return false;              // "3" es un número escrito como texto -> mal
+    return true;
+}
+
+// ¿Es una FECHA de verdad?  (texto tipo "2026-10-20" o "2026-10-20T10:00:00")
+function esFechaValida(f){
+    if (typeof f != "string") return false;   // un número (ej: 5) NO vale como fecha
+    if (f.indexOf("-") == -1) return false;   // una fecha lleva guiones: "2026-10-20"
+    if (isNaN(new Date(f).getTime())) return false;   // "Invalid Date" -> mal
+    return true;
+}
+
+// La categoría puede venir con tilde ("categoría") o sin ella ("categoria")
+function sacarCategoria(r){
+    var categoria = r["categoría"];
+    if (categoria == undefined){
+        categoria = r["categoria"];
+    }
+    return categoria;
+}
 
 // ¿Está bien un ENVÍO?   { id_area: 1..18, fecha: "...", datos: [ ... ] }
 function esEnvioValido(envio){
@@ -464,10 +494,13 @@ function esEnvioValido(envio){
     if (typeof envio.id_area != "number" && typeof envio.id_area != "string") return false;
     var area = Number(envio.id_area);
     if (isNaN(area)) return false;            // no es un número
-    if (area < 1 || area > 18) return false;  // fuera de rango
+    if (area < 1 || area > 18) return false;  // fuera de rango (también "" que da 0)
     if (area % 1 != 0) return false;          // tiene decimales (ej: 2.5)
 
-    // 3) datos tiene que ser un array [ ]
+    // 3) fecha del envío: una fecha de verdad
+    if (!esFechaValida(envio.fecha)) return false;
+
+    // 4) datos tiene que ser un array [ ]
     if (!Array.isArray(envio.datos)) return false;
 
     return true;   // ha pasado todas las comprobaciones
@@ -480,48 +513,35 @@ function esReservaValida(r){
     if (typeof r != "object") return false;
     if (Array.isArray(r)) return false;
 
-    // 2) nombre: texto, no vacío, y que NO sea un número (por si pusieron el id)
-    if (typeof r.nombre != "string") return false;
-    if (r.nombre.trim() == "") return false;
-    if (!isNaN(r.nombre)) return false;       // "3" es un número -> mal
+    // 2) nombre, apellidos y categoría: textos de verdad
+    if (!esTextoValido(r.nombre)) return false;
+    if (!esTextoValido(r.apellidos)) return false;
+    if (!esTextoValido(sacarCategoria(r))) return false;
 
-    // 3) apellidos: lo mismo
-    if (typeof r.apellidos != "string") return false;
-    if (r.apellidos.trim() == "") return false;
-    if (!isNaN(r.apellidos)) return false;
-
-    // 4) categoría: lo mismo (puede venir con tilde o sin ella)
-    var categoria = r["categoría"];
-    if (categoria == undefined) categoria = r["categoria"];
-    if (typeof categoria != "string") return false;
-    if (categoria.trim() == "") return false;
-    if (!isNaN(categoria)) return false;
-
-    // 5) horas_estimadas: un número mayor que 0
+    // 3) horas_estimadas: un número mayor que 0 (puede venir como 5 o como "5")
     if (typeof r.horas_estimadas != "number" && typeof r.horas_estimadas != "string") return false;
     var horas = Number(r.horas_estimadas);
     if (isNaN(horas)) return false;
     if (horas <= 0) return false;
+    if (!isFinite(horas)) return false;       // "Infinity" -> mal
 
-    // 6) fec_pet: obligatoria y tiene que ser una fecha de verdad
-    if (r.fec_pet == null) return false;
-    if (isNaN(new Date(r.fec_pet).getTime())) return false;   // "Invalid Date" -> mal
+    // 4) fec_pet: obligatoria y fecha de verdad
+    if (!esFechaValida(r.fec_pet)) return false;
 
-    // 7) fec_ini y fecha_fin: pueden ser null (sin empezar / sin acabar),
+    // 5) fec_ini y fecha_fin: pueden ser null (sin empezar / sin acabar),
     //    pero si traen algo, tiene que ser una fecha de verdad
-    if (r.fec_ini != null && isNaN(new Date(r.fec_ini).getTime())) return false;
-    if (r.fecha_fin != null && isNaN(new Date(r.fecha_fin).getTime())) return false;
+    if (r.fec_ini != null && !esFechaValida(r.fec_ini)) return false;
+    if (r.fecha_fin != null && !esFechaValida(r.fecha_fin)) return false;
+
+    // 6) Que tenga sentido: no puede acabar sin haber empezado,
+    //    ni acabar antes de empezar
+    if (r.fecha_fin != null && r.fec_ini == null) return false;
+    if (r.fecha_fin != null && new Date(r.fecha_fin) < new Date(r.fec_ini)) return false;
 
     return true;   // ha pasado todas las comprobaciones
 }
 
 
-
-
-
-
-
-/* ---------- RANKING (GET) ---------- */
 /* ---------- RANKING POR ÁREA (GET) ---------- */
 async function cargarRanking(){
     var tabla = document.getElementById("tablaRanking");
@@ -609,94 +629,6 @@ async function cargarRanking(){
             tabla.innerHTML = tabla.innerHTML +
                 "<tr><td>" + (i + 1) + "º</td>" +
                 "<td>" + nombre + " (" + ranking[i].area + ")</td>" +
-                "<td>" + ranking[i].total + "</td></tr>";
-        }
-
-    } catch (e){
-        console.log(e);
-        tabla.innerHTML = "<tr><td colspan='3'>No se ha podido conectar con el Ministerio</td></tr>";
-    }
-}
-
-
-/* ---------- EJERCICIO 3: RANKING POR CATEGORÍA ---------- */
-async function cargarRankingCategoria(){
-    var tabla = document.getElementById("tablaRankingCategoria");
-    tabla.innerHTML = "<tr><td colspan='3'>Cargando...</td></tr>";
-
-    try {
-        // 1) GET al Ministerio (SIN token)
-        var resp = await fetch(URL_MINISTERIO);
-        if (!resp.ok){
-            tabla.innerHTML = "<tr><td colspan='3'>Error al pedir los datos al Ministerio</td></tr>";
-            return;
-        }
-        var envios = await resp.json();
-        if (!Array.isArray(envios)){ // si envios NO es una lista:
-            tabla.innerHTML = "<tr><td colspan='3'>El Ministerio ha devuelto datos incorrectos</td></tr>";
-            return;
-        }
-
-        // 2) ranking = lista de { categoria, total }   
-        var ranking = [];
-
-        for (var i = 0; i < envios.length; i++){
-            var envio = envios[i];
-            if (!esEnvioValido(envio)){
-                continue;
-            }
-
-            for (var j = 0; j < envio.datos.length; j++){
-                var r = envio.datos[j];
-                if (!esReservaValida(r)){
-                    continue;
-                }
-
-                // la categoría puede venir con o sin tilde
-                var categoria = r["categoría"];
-                if (categoria == undefined){
-                    categoria = r["categoria"];
-                }
-
-                // ¿Ya tengo esta categoría en el ranking? La busco
-                var posicion = -1;
-
-                for (var k = 0; k < ranking.length; k++){
-                    if (ranking[k].categoria == categoria){
-                        posicion = k;
-                    }
-                }
-
-                // total es cuantas reservas hay de esa categoria
-                if (posicion == -1){
-                    ranking.push({ categoria: categoria, total: 1 });
-                } else {
-                    ranking[posicion].total = ranking[posicion].total + 1;
-                }
-            }
-        }
-
-        // 3) Ordenar de MAYOR a MENOR total
-        for (var a = 0; a < ranking.length; a++){
-            for (var b = a + 1; b < ranking.length; b++){
-                if (ranking[b].total > ranking[a].total){
-                    var aux = ranking[a];
-                    ranking[a] = ranking[b];
-                    ranking[b] = aux;
-                }
-            }
-        }
-
-        // 4) Pintar la tabla
-        tabla.innerHTML = "";
-        if (ranking.length == 0){
-            tabla.innerHTML = "<tr><td colspan='3'>Todavía no hay datos válidos</td></tr>";
-            return;
-        }
-        for (var i = 0; i < ranking.length; i++){
-            tabla.innerHTML = tabla.innerHTML +
-                "<tr><td>" + (i + 1) + "º</td>" +
-                "<td>" + ranking[i].categoria + "</td>" +
                 "<td>" + ranking[i].total + "</td></tr>";
         }
 
