@@ -347,24 +347,30 @@ function fechaHoy(){
 /* ===============================
    SUBIR RESERVAS (POST)
 ================================ */
+// "DNI" de una reserva para saber si ya está en el Ministerio
+function claveReserva(nombre, apellidos, categoria, horas, fecPet){
+    return nombre + "|" + apellidos + "|" + categoria + "|" + Number(horas) + "|" + String(fecPet).substring(0, 10);
+}
+
 async function subirReservasMinisterio(){
     var idArea = MI_ID_AREA;
 
     try {
-        // ¿Ya las hemos subido antes?
+        // Reservas que ya están en el Ministerio con nuestro código
         var respMin = await fetch(URL_MINISTERIO);
         var enviosMin = await respMin.json();
 
-        var yaSubido = false;
+        var yaSubidas = [];
         for (var i = 0; i < enviosMin.length; i++){
-            if (Number(enviosMin[i].id_area) == MI_ID_AREA){
-                yaSubido = true;
-            }
-        }
+            var envio = enviosMin[i];
+            if (envio == null || Number(envio.id_area) != MI_ID_AREA) continue;
+            if (!Array.isArray(envio.datos)) continue;
 
-        if (yaSubido == true){
-            alert("Ya habéis subido vuestras reservas al Ministerio. No se pueden subir otra vez.");
-            return;
+            for (var j = 0; j < envio.datos.length; j++){
+                var d = envio.datos[j];
+                if (d == null) continue;
+                yaSubidas.push(claveReserva(d.nombre, d.apellidos, sacarCategoria(d), d.horas_estimadas, d.fec_pet));
+            }
         }
 
         // Datos de nuestro servidor
@@ -399,10 +405,31 @@ async function subirReservasMinisterio(){
                 }
             }
 
+            var nombre    = "";
+            var apellidos = "";
+            var categoria = "";
+            if (san != null){
+                nombre = san.nombre;
+                apellidos = san.apellidos;
+            }
+            if (cat != null){
+                categoria = cat.nombre;
+            }
+
+            // ¿Ya está subida? Entonces no la vuelvo a mandar
+            var clave = claveReserva(nombre, apellidos, categoria, r.horas_estimadas, r.fecha_peticion);
+            var repetida = false;
+            for (var k = 0; k < yaSubidas.length; k++){
+                if (yaSubidas[k] == clave){
+                    repetida = true;
+                }
+            }
+            if (repetida == true) continue;
+
             datos.push({
-                "nombre":          san ? san.nombre : "",
-                "apellidos":       san ? san.apellidos : "",
-                "categoría":       cat ? cat.nombre : "",
+                "nombre":          nombre,
+                "apellidos":       apellidos,
+                "categoría":       categoria,
                 "horas_estimadas": r.horas_estimadas,
                 "fec_pet":         r.fecha_peticion,
                 "fec_ini":         r.fecha_inicio,
@@ -410,7 +437,12 @@ async function subirReservasMinisterio(){
             });
         }
 
-        // POST al Ministerio
+        if (datos.length == 0){
+            alert("No hay reservas nuevas. Todas están ya subidas al Ministerio.");
+            return;
+        }
+
+        // POST al Ministerio (solo las nuevas)
         var cuerpo = { "id_area": idArea, "fecha": fechaHoy(), "datos": datos };
 
         var resp = await fetch(URL_MINISTERIO, {
@@ -423,7 +455,7 @@ async function subirReservasMinisterio(){
             alert("El Ministerio ha rechazado los datos (error " + resp.status + ")");
             return;
         }
-        alert("Subidas " + datos.length + " reservas al Ministerio (código " + idArea + ")");
+        alert("Subidas " + datos.length + " reservas nuevas al Ministerio (código " + idArea + ")");
         cargarRanking();
 
     } catch (e){
@@ -456,7 +488,7 @@ function esFechaValida(f){
 
     if (anyo < 2000) return false;
 
-    // ¿Existe el día? ( 31 de febrero no)
+    // ¿Existe ese día? (ej: 31 de febrero no)
     var prueba = new Date(anyo, mes - 1, dia);
     if (prueba.getMonth() != mes - 1) return false;
     if (prueba.getDate() != dia) return false;
@@ -470,7 +502,7 @@ function esFechaVacia(f){
     return false;
 }
 
-// Con tilde o sin
+// Con tilde o sin ella
 function sacarCategoria(r){
     var categoria = r["categoría"];
     if (categoria == undefined){
