@@ -496,6 +496,7 @@ function esFechaValida(f){
     return true;
 }
 
+// hay fecha (si esta iniciada o finalizada le psas la fecha)
 function esFechaVacia(f){
     if (f == null) return true;
     if (f === "") return true;

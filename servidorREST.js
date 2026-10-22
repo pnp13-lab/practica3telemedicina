@@ -3,13 +3,13 @@ var app = express(); // crear la app express
 
 // =========================================================
 // PRÁCTICA 3 - PARTE 3: BASE DE DATOS EN SUPABASE
-// En vez de MySQL (XAMPP) usamos Supabase con su librería
+
 // =========================================================
 // 1. Importar el cliente de Supabase
 const { createClient } = require('@supabase/supabase-js');
 
-// 2. Configurar con tu URL y tu Public Key (anon key)
-//    (Supabase -> botón "Connect" o Project Settings -> API)
+// URL supabase y contraseña
+
 const supabaseUrl = 'https://pnmoiqiivqsrqjnotfda.supabase.co';
 const supabaseKey = 'sb_publishable_3fDuZl0SaLI0qhQ7BIeOhg_7ZuLBxsl';
 const supabase = createClient(supabaseUrl, supabaseKey);
@@ -18,18 +18,18 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 var jwt = require('jwt-simple');
 var clave = 'miSecretoMasOscuro'; // clave para codificar / decodificar el token
 
-app.use(express.json()); // json es un formato de intercambio de datos
+app.use(express.json()); 
 
-// DEPURAR: mostrar todas las peticiones que llegan
+
 app.use((req, res, next) => {
     console.log("Petición recibida:", req.method, req.path);
-    next(); // sigue con la ruta correspondiente
+    next(); 
 });
 
 
 // =========================================================
 // SERVICIOS PÚBLICOS (no necesitan token)
-// Login y registro tienen que ir ANTES del app.use que comprueba el token
+// Login y registro van  ANTES del app.use que comprueba el token
 // =========================================================
 
 // POST: login gestor
@@ -53,7 +53,7 @@ app.post("/api/gestores/login", async function(req, res) {
     // el login crea el token
     var contenido = {
         usuario: data[0].id,
-        expira: Date.now() + 60 * 60 * 1000 // expira en 1 hora (en ms)
+        expira: Date.now() + 60 * 60 * 1000 
     };
     var token = jwt.encode(contenido, clave);
 
@@ -90,7 +90,7 @@ app.post("/api/gestores", async function(req, res) {
 
 
 // =========================================================
-// COMPROBAR EL TOKEN ("el portero")
+// COMPROBAR  TOKEN 
 // Antes de este use, los servicios son públicos (no necesitan token)
 // Después de este use, TODOS los /api necesitan el token
 // El token llega en la URL:  /api/recursos?token=XXXXXXXX
